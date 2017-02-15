@@ -2,12 +2,16 @@ package examples.hybrid
 
 import akka.actor.ActorRef
 import examples.hybrid.blocks.{HybridBlock, PosBlock, PowBlock}
+import examples.hybrid.mining.MiningSettings
 import examples.hybrid.mining.PosForger.{StartForging, StopForging}
-import examples.hybrid.mining.{MiningSettings, PowMiner}
 import examples.hybrid.mining.PowMiner.{MineBlock, StartMining, StopMining}
 import examples.hybrid.state.SimpleBoxTransaction
 import scorex.core.LocalInterface
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
+
+import scala.concurrent.duration._
+import scala.util.Random
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class HLocalInterface(override val viewHolderRef: ActorRef,
                       powMinerRef: ActorRef,
@@ -31,8 +35,8 @@ class HLocalInterface(override val viewHolderRef: ActorRef,
     if (!block) {
       mod match {
         case wb: PowBlock =>
-          posForgerRef ! StartForging
           powMinerRef ! MineBlock
+          context.system.scheduler.scheduleOnce(Random.nextInt(1000).millis)(posForgerRef ! StartForging)
 
         case sb: PosBlock =>
           if (!(sb.parentId sameElements miningSettings.GenesisParentId)) {

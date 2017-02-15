@@ -4,8 +4,9 @@ import java.io.File
 
 import examples.hybrid.blocks.PowBlock
 import examples.hybrid.history.{HistoryStorage, HybridHistory}
-import examples.hybrid.mining.MiningConstants
+import examples.hybrid.mining.{MiningConstants, MiningSettings}
 import hybrid.HybridGenerators
+import io.circe
 import io.iohk.iodb.LSMStore
 import org.mapdb.DBMaker
 import org.scalacheck.Gen
@@ -25,8 +26,9 @@ class HybridHistorySpecification extends PropSpec
   with Matchers
   with HybridGenerators {
 
-  val constants = new MiningConstants {
-    override val BlockDelay: Long = 1.minute.toMillis
+  val constants = new MiningSettings {
+    override val settingsJSON: Map[String, circe.Json] = Map()
+    override lazy val BlockDelay: Long = 1.minute.toMillis
 
     override lazy val Difficulty: BigInt = 1
   }
@@ -83,7 +85,7 @@ class HybridHistorySpecification extends PropSpec
   }
 
 
-  def generate(settings: MiningConstants): HybridHistory = {
+  def generate(settings: MiningSettings): HybridHistory = {
     val dataDir = s"/tmp/scorex/scorextest-${Random.nextInt(10000000)}"
 
     val iFile = new File(s"$dataDir/blocks")

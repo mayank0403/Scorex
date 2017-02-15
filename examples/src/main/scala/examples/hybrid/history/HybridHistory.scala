@@ -27,7 +27,7 @@ import scala.util.{Failure, Success, Try}
   * we store all the blocks, even if they are not in a main chain
   */
 class HybridHistory(storage: HistoryStorage,
-                    settings: MiningConstants,
+                    settings: MiningSettings,
                     validators: Seq[BlockValidator[HybridBlock]])
   extends History[PublicKey25519Proposition,
     SimpleBoxTransaction,
@@ -171,6 +171,7 @@ class HybridHistory(storage: HistoryStorage,
     log.info(s"History: block ${Base58.encode(block.id)} appended to chain with score ${storage.heightOf(block.id)}. " +
       s"Best score is ${storage.bestChainScore}. " +
       s"Pair: ${Base58.encode(storage.bestPowId)}|${Base58.encode(storage.bestPosId)}")
+    if(storage.bestChainScore == 1000) System.exit(1)
     res
   }
 
@@ -209,7 +210,7 @@ class HybridHistory(storage: HistoryStorage,
       val newPowDiff = bounded(newPowDiffUnlimited, oldPowDifficulty)
 
       val oldPosDifficulty = storage.getPoSDifficulty(powBlocks.last.prevPosId)
-      val newPosDiff = oldPosDifficulty * DifficultyRecalcPeriod / ((DifficultyRecalcPeriod + brothersCount) * 8 / 10)
+      val newPosDiff = oldPosDifficulty * DifficultyRecalcPeriod / ((DifficultyRecalcPeriod + brothersCount) * settings.twinsR / 10)
       log.info(s"PoW difficulty changed at ${Base58.encode(posBlock.id)}: old $oldPowDifficulty, new $newPowDiff. " +
         s" ${powBlocks.last.timestamp} - ${powBlocks.head.timestamp} | $brothersCount")
       log.info(s"PoS difficulty changed: old $oldPosDifficulty, new $newPosDiff")
@@ -382,7 +383,7 @@ object HybridHistory extends ScorexLogging {
     readOrGenerate(dataDir, logDirOpt, settings)
   }
 
-  def readOrGenerate(dataDir: String, logDirOpt: Option[String], settings: MiningConstants): HybridHistory = {
+  def readOrGenerate(dataDir: String, logDirOpt: Option[String], settings: MiningSettings): HybridHistory = {
     val iFile = new File(s"$dataDir/blocks")
     iFile.mkdirs()
     val blockStorage = new LSMStore(iFile)
