@@ -9,7 +9,7 @@ import examples.curvepos.{Nonce, Value}
 import examples.hybrid.blocks.{HybridBlock, PosBlock, PowBlock}
 import io.iohk.iodb.{ByteArrayWrapper, LSMStore}
 import scorex.core.VersionTag
-import scorex.core.settings.Settings
+import scorex.core.settings.ScorexSettings
 import scorex.core.transaction.box.proposition.PublicKey25519Proposition
 import scorex.core.transaction.state.{BoxStateChangeOperation, BoxStateChanges, Insertion, Removal}
 import scorex.core.utils.ScorexLogging
@@ -41,7 +41,7 @@ case class HBoxStoredState(store: LSMStore, override val version: VersionTag) ex
       .map(PublicKey25519NoncedBoxSerializer.parseBytes)
       .flatMap(_.toOption)
 
-  //there's no easy way to know boxes associated with a proposition, without an additional index
+  //there's no easy way to know boxes associated with a proposition without an additional index
   override def boxesOf(proposition: PublicKey25519Proposition): Seq[PublicKey25519NoncedBox] = ???
 
   override def changes(mod: HPMOD): Try[BoxStateChanges[PublicKey25519Proposition, PublicKey25519NoncedBox]] =
@@ -50,20 +50,20 @@ case class HBoxStoredState(store: LSMStore, override val version: VersionTag) ex
   //Validate transactions in block and generator box
   override def validate(mod: HPMOD): Try[Unit] = Try {
     mod match {
-      case b: PowBlock =>
+      case pwb: PowBlock =>
         //coinbase transaction is generated implicitly when block is applied to state, no validation needed
-        require((b.parentId sameElements version) || (b.prevPosId sameElements version)
-          || b.brothers.exists(_.id sameElements version), s"Incorrect state version: ${Base58.encode(version)} " +
-          s"found, (${Base58.encode(b.prevPosId)} || ${Base58.encode(b.parentId)} ||" +
-          s" ${b.brothers.map(b => Base58.encode(b.id))}) expected")
+        require((pwb.parentId sameElements version) || (pwb.prevPosId sameElements version)
+          || pwb.brothers.exists(_.id sameElements version), s"Incorrect state version: ${Base58.encode(version)} " +
+          s"found, (${Base58.encode(pwb.prevPosId)} || ${Base58.encode(pwb.parentId)} ||" +
+          s" ${pwb.brothers.map(b => Base58.encode(b.id))}) expected")
 
-      case b: PosBlock =>
-        require(b.parentId sameElements version, s"Incorrect state version: ${Base58.encode(b.parentId)} " +
-          s"found, ${Base58.encode(version)} expected.")
-        closedBox(b.generatorBox.id).get
-        b.transactions.foreach(tx => validate(tx).get)
+      case psb: PosBlock =>
+        require(psb.parentId sameElements version, s"Incorrect state version!: ${Base58.encode(psb.parentId)} found, " +
+          s"${Base58.encode(version)} expected")
+        closedBox(psb.generatorBox.id).get
+        psb.transactions.foreach(tx => validate(tx).get)
     }
-  }
+  }.recoverWith{case t => log.warn(s"Not valid modifier ${mod.encodedId}", t); Failure(t)}
 
   override def applyChanges(changes: BoxStateChanges[PublicKey25519Proposition, PublicKey25519NoncedBox],
                             newVersion: VersionTag): Try[HBoxStoredState] = Try {
@@ -86,7 +86,7 @@ case class HBoxStoredState(store: LSMStore, override val version: VersionTag) ex
     if (store.lastVersionID.exists(_.data sameElements version)) {
       this
     } else {
-      log.debug(s"Rollback HBoxStoredState to ${Base58.encode(version)} from version $lastVersionString")
+      log.info(s"Rollback HBoxStoredState to ${Base58.encode(version)} from version $lastVersionString")
       store.rollback(ByteArrayWrapper(version))
       new HBoxStoredState(store, version)
     }
@@ -132,13 +132,11 @@ object HBoxStoredState {
     }
   }
 
-  def readOrGenerate(settings: Settings): HBoxStoredState = {
-    val dataDirOpt = settings.dataDirOpt.ensuring(_.isDefined, "data dir must be specified")
-    val dataDir = dataDirOpt.get
+  def readOrGenerate(settings: ScorexSettings): HBoxStoredState = {
+    import settings.dataDir
+    dataDir.mkdirs()
 
-    new File(dataDir).mkdirs()
-
-    val iFile = new File(s"$dataDir/state")
+    val iFile = new File(s"${dataDir.getAbsolutePath}/state")
     iFile.mkdirs()
     val stateStorage = new LSMStore(iFile, maxJournalEntryCount = 10000)
 
@@ -152,7 +150,7 @@ object HBoxStoredState {
     HBoxStoredState(stateStorage, version)
   }
 
-  def genesisState(settings: Settings, initialBlocks: Seq[HybridBlock]): HBoxStoredState = {
+  def genesisState(settings: ScorexSettings, initialBlocks: Seq[HybridBlock]): HBoxStoredState = {
     initialBlocks.foldLeft(readOrGenerate(settings)) { (state, mod) =>
       state.changes(mod).flatMap(cs => state.applyChanges(cs, VersionTag @@ mod.id)).get
     }

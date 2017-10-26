@@ -9,7 +9,7 @@ import akka.pattern.ask
 import akka.util.Timeout
 import scorex.core.network.message.{Message, MessageHandler, MessageSpec}
 import scorex.core.network.peer.PeerManager
-import scorex.core.settings.Settings
+import scorex.core.settings.NetworkSettings
 import scorex.core.utils.ScorexLogging
 
 import scala.collection.JavaConverters._
@@ -17,14 +17,14 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.language.existentials
-import scala.util.{Failure, Success, Try}
 import scala.reflect.runtime.universe.TypeTag
+import scala.util.{Failure, Success, Try}
 
 /**
   * Control all network interaction
   * must be singleton
   */
-class NetworkController(settings: Settings,
+class NetworkController(settings: NetworkSettings,
                         messageHandler: MessageHandler,
                         upnp: UPnP,
                         peerManagerRef: ActorRef
@@ -32,7 +32,7 @@ class NetworkController(settings: Settings,
 
   import NetworkController._
 
-  val peerSynchronizer = context.system.actorOf(Props(classOf[PeerSynchronizer], self, peerManagerRef), "PeerSynchronizer")
+  val peerSynchronizer = context.system.actorOf(Props(new PeerSynchronizer(self, peerManagerRef)), "PeerSynchronizer")
 
   private implicit val system = context.system
 
@@ -80,7 +80,7 @@ class NetworkController(settings: Settings,
   log.info(s"Declared address: $externalSocketAddress")
 
 
-  lazy val connTimeout = Some(new FiniteDuration(settings.connectionTimeout, SECONDS))
+  lazy val connTimeout = Some(settings.connectionTimeout)
 
   //bind to listen incoming connections
   IO(Tcp) ! Bind(self, localAddress)
@@ -129,8 +129,8 @@ class NetworkController(settings: Settings,
 
     case c@Connected(remote, local) =>
       val connection = sender()
-      val props = Props(classOf[PeerConnectionHandler], settings, self, peerManagerRef,
-        messageHandler, connection, externalSocketAddress, remote)
+      val props = Props(new PeerConnectionHandler(settings, self, peerManagerRef,
+        messageHandler, connection, externalSocketAddress, remote))
       val handler = context.actorOf(props)
       connection ! Register(handler, keepOpenOnPeerClosed = false, useResumeWriting = true)
       val newPeer = ConnectedPeer(remote, handler)
@@ -177,4 +177,5 @@ object NetworkController {
   case class ConnectTo(address: InetSocketAddress)
 
   case class DataFromPeer[DT: TypeTag](spec: MessageSpec[DT], data: DT, source: ConnectedPeer)
+
 }

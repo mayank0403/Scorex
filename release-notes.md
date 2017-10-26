@@ -1,3 +1,7 @@
+2.0.0-RC4
+---------
+* *modifierCompanions* renamed to *modifierSerializers* in *NodeViewHolder*
+
 2.0.0-RC3
 ---------
 * *MinimalState* interface simplification: *validate()* puled away from the basic trait 
@@ -5,7 +9,7 @@
 * No *transactions* field with an optional value in *PersistentNodeViewModifier*, 
 use *TransactionsCarryingPersistentNodeViewModifier* descendant for modifiers with transactions.
 * Non-exhaustive pattern-matching fix in *NodeViewholder.pmodModify()*
-* Simplification of type parameters in many classes aroundthe whole codebase
+* Simplification of type parameters in many classes around the whole codebase
 * *FastCryptographicHash* removed
 * Some obsolete code removed, such as *temp/mining* folder, *ScoreObserver* class
 * Scrypto 2.0.0
